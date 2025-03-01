@@ -1,0 +1,58 @@
+---
+title: "Zadanie 6"
+author: "Jakub Wojna"
+date: "2024-06-08"
+output: html_document
+---
+
+
+
+```{r echo = TRUE}
+library(xgboost)
+library(caret)
+library(glmnet)
+library(data.table)
+```
+
+```{r}
+X_train <- fread("X_train.csv")
+y_train <- fread("Y_train.csv")
+X_test <- fread("X_test.csv")
+```
+
+
+```{r}
+XTrain = read.csv("X_train.csv")
+YTrain = read.csv("y_train.csv")
+XTest = read.csv("X_test.csv")
+```
+
+```{r}
+Y <- YTrain[,1]
+
+dtrain = xgb.DMatrix(data = as.matrix(XTrain), label = Y )
+watchlist = list(train=dtrain)
+bst_slow = xgb.train(data = dtrain, 
+                     max.depth=5, 
+                     eta = 0.01, 
+                     nthread = 2, 
+                     nround = 1000,
+                     watchlist = watchlist, 
+                     early_stopping_rounds = 50,
+                     print_every_n = 100)
+
+
+```
+
+
+```{r}
+
+dtest = xgb.DMatrix(data = as.matrix(XTest))
+predictions = predict(bst_slow, dtest)
+
+predicted_df <- data.frame(
+  id = 0:(nrow(XTest) - 1), 
+)
+
+write.csv(predicted_df, file = "predictionssss12345.csv", row.names = FALSE)
+```
