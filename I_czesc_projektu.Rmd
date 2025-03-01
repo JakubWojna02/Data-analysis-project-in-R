@@ -1,0 +1,357 @@
+---
+title: "SAD - projekt"
+author: "Jakub Wojna"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, cache = TRUE)
+```
+
+```{r}
+library(viridis)
+library(data.table)
+library(ggplot2)
+library(reshape2)
+library(viridis)
+library(caret)
+library(glmnet)
+library(caret)
+library(dplyr)
+```
+
+## Eksploracja
+
+```{r}
+X_train <- fread("X_train.csv")
+y_train <- fread("Y_train.csv")
+X_test <- fread("X_test.csv")
+```
+
+Dosyponujemy danymi treningowymi `X_train`, `y_train` oraz danymi testowymi `X_test`. Pochodzą one z eksperymentu scRNA-seq. Macierze `X_train`, `X_test` zawierają sygnały RNA z wielu tysięcy genów, a macierz `y_train` zawiera sygnały pochodzące z białka powierzchniowego CD71. 
+
+Macierz `X_train` jest rozmiarów $6800 \times 9000$, zawiera $6800$ obserwacji, do których przypisano po $9000$ sygnałów RNA. 
+
+```{r podstawowa eksploracja danych}
+print("Dane treningowe - RNA")
+print(dim(X_train))
+
+print("Dane treningowe - białko powierzchniowe")
+print(dim(y_train))
+
+print("Dane testowe - RNA")
+print(dim(X_test))
+```
+```{r echo = TRUE}
+cat("Czy wszystkie kolumny w X_train są numeryczne? ", all(sapply(X_train, is.numeric)), "\n")
+cat("Czy X_train ma kompletne przypadki? ", all(complete.cases(X_train)), "\n")
+cat("Czy y_train ma kompletne przypadki? ", all(complete.cases(y_train)), "\n")
+cat("Czy wszystkie kolumny w X_test są numeryczne? ", all(sapply(X_test, is.numeric)), "\n")
+cat("Czy X_test ma kompletne przypadki? ", all(complete.cases(X_test)), "\n")
+cat("Czy kolumny X_test i X_train są identyczne? ", identical(colnames(X_test), colnames(X_train)), "\n")
+```
+
+```{r echo = TRUE}
+all(sapply(X_train, is.numeric))
+all(complete.cases(X_train))
+```
+
+Dane są oczekiwanego typu i są kompletne.
+
+
+Macierz `y_train` jest rozmiarów $6800 \times 1$, zawiera $6800$ obserwacji, do których przypisano zmierzone sygnały pochodzące od białka CD36.
+
+```{r echo = TRUE}
+all(complete.cases(y_train))
+```
+
+Dane są oczekiwanego typu i są kompletne. Obserwacji jest tyle samo co w przypadku `X_train`, więc dane testowe do siebie pasują.
+
+
+Macierz `X_test` jest rozmiarów $1200 \times 9000$, zawiera $1200$ obserwacji, do których przypisano po $9000$ sygnałów RNA. 
+
+```{r echo = TRUE}
+all(sapply(X_test, is.numeric))
+all(complete.cases(X_test))
+identical(colnames(X_test), colnames(X_train))
+```
+
+Dane są oczekiwanego typu i są kompletne. Kolumny pokrywają z się kolumnami macierzy `X_train`, więc dane treningowe pasują do danych testowych.
+
+
+Wykres estymatora gęstości rozkładu empirycznego zmiennej objaśnianej wygląda tak:
+
+```{r}
+plot(density(y_train$CD36), main = "Gęstość estymatora empirycznego", ylab = "gęstość", xlab = "wartość sygnału białka CD361")
+```
+
+
+### B) Rozkład zmiennej objaśnianej
+
+Zmienna objaśniana (białko $CD36$) jest zmienną ciągłą. Na histogramie widać, że dla wartości mniejszych od $0.5$ występuje duża liczba obserwacji. Wykres kwantylowy pokazuje, że rozkład zmiennej objaśnianej jest zbliżony do rozkładu normalnego, z wyjątkiem wartości skrajnie małych.
+
+```{r podpunkt b - Rozkład zmiennej objaśnianej}
+# Badamy rozkład zmiennej objaśnianej (dane 'Y_train')
+summary(y_train)
+```
+
+
+```{r}
+ggplot(data = y_train, aes(x = CD36)) +
+  geom_density(fill = "blue", alpha = 0.5) +
+  labs(title = "Gęstość estymatora empirycznego", x = "Wartość sygnału białka CD361", y = "Gęstość")
+
+```
+Podstawowe statystyki liczbowe prezentują się następująco:
+
+
+
+```{r podpunkt b - Histogram}
+ggplot(data = y_train, aes(x = CD36)) + geom_histogram(color="black", fill="white")
+```
+```{r podpunkt b - Wykres kwantylowy}
+ggplot(data = y_train) + geom_qq(aes(sample = CD36), size=1.5, color="red")
+```
+
+### C) Korelacja zmiennych
+
+```{r podpunkt c - korelacja zmiennych}
+correlated <- sapply(X_train, function(x) cor(x, y_train$CD36))
+top250 <- names(sort(abs(correlated), decreasing = TRUE))[1:250]
+X_high_cor <- X_train[, ..top250]
+```
+  
+  
+```{r podpunkt c - korelacja }
+X_high_cor
+```
+
+```{r podpunkt c - macierz korelacji dla  250 zmiennych}
+cor_matrix <- cor(X_high_cor)
+cor_relations <- melt(cor_matrix)
+```
+
+
+```{r podpunkt c - macierz korelacji}
+ggplot(data = cor_relations, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_viridis(discrete = FALSE) +
+  labs(title = "Mapa ciepła korelacji", x = "Zmienna x", y = "Zmienna y") +
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank()) +
+  coord_fixed()
+```
+### Zad 2
+
+## Testy statystyczne
+
+
+```{r Punkt 2 - WIP}
+ggplot(data = y_train) +
+  geom_qq(aes(sample = CD36), size=1.5, color = "red") +
+  geom_qq_line(aes(sample = CD36))
+
+ks.test(y_train, "pnorm") # Test Kolmogorova-Smiernov'a
+```
+```{r echo = TRUE}
+# Wybieramy zmienne najbardziej skorelowane
+correlations <- apply(X_train, 2, function (x) cor(x, y_train))
+most_correlated <- X_train[,order(correlations, decreasing = T)[1]]
+```
+
+```{r echo = TRUE}
+# Test statystyczny hipotezy zgodności z rozkładem
+ggplot() + aes(x = most_correlated) + 
+  geom_histogram(binwidth = 0.1, color="blue", fill="white")
+```
+
+```{r echo = TRUE}
+# Normalizacja danych
+most_normalized <- (most_correlated - mean(most_correlated)) / sd(most_correlated)
+ks.test(most_correlated, "pchisq", mean(most_correlated)^2 / var(most_correlated))
+most_cleared <- most_normalized[most_correlated > 0.2]
+```
+
+Analogicznie p-wartość jest na tyle niska, że możemy odrzucić hipotezę zerową na poziomie istotności 0.1.
+
+Sprawdzimy, czy wybrana zmienna objaśniająca ma podobny rozkład w zbiorze testowym i treningowym.
+
+
+
+
+```{r echo = TRUE}
+# Normalizacja danych
+most_normalized <- (most_correlated - mean(most_correlated)) / sd(most_correlated)
+
+#ks.test(most_normalized, "pnorm") 
+#most_cleared <- most_normalized[most_correlated > 0.2]
+#ks.test(most_cleared, "pnorm")
+```
+### Model ElasticNe
+
+Model ElasticNet jest rozszerzeniem modelu regresji liniowej, które łączy w sobie cechy modelu grzbietowego oraz modelu lasso. Szukamy takich parametrów $\alpha \in [0,1], \lambda \in [0, \infty)$, żeby zminimalizować wartość wyrażenia
+\[
+\sum_{i=1}^n \left(y_i - \beta_0 - \sum_{j=1}^p \beta_j x_{ij}\right)^2 + \lambda \left( \frac{1 - \alpha}{2} \sum_{j=1}^p \beta_j^2 + \alpha \sum_{j=1}^p |\beta_j| \right).
+\]
+Pierwszy człon przedstawia RSS, a drugi karę ściągającą. Parametr $\alpha$ odpowiada za to, jakie wagi przypisujemy karom pochdzących od metody grzbietowej i metody lasso, zaś parametr $\lambda$ gra rolę parametru sterującego, tzn. odpowiada za moc tych kar. Dla $\alpha = 0$ model pokrywa się z modelem grzebietowym, a dla $\alpha = 1$ z modelem lasso.
+
+
+Będziemy rozważać siatkę parametrów, w której $\alpha \in \{0, 0.1, 0.3, 0.6, 1\}$, zaś $\lambda \in \{0.001, 0.01, 0.1, 1\}$. Wybraliśmy takie wartości $\alpha$, ponieważ ze względu na charakter danych spodziewamy się, że walidacja grzebietowa będzie tutaj bardziej skuteczna. Wybraliśmy takie wartości dla parametru $\lambda$, ponieważ dane są podobnego rzędu wielkości i spodziewamy się raczej słabej regularyzacji. Wybraliśmy $3$ zbiory walidacji krzyżowej, ponieważ dla mniejszych wartości metoda nie jest szczególnie skuteczna, a dla większych wartości skuteczność jest nieproporcjonalnie w stosunku do czasu obliczeń. Nie wykonujemy powtórzeń, ponieważ zbiór danych jest bardzo duży, więc nie zwiększa to szczególnie skuteczności, a mocno wpłwa na czas obliczeń.
+
+```{r echo = TRUE}
+set.seed(1000)
+control = trainControl(method = "cv", number = 5)
+grid <- expand.grid(alpha = c(0, 0.1, 0.3, 0.6, 1), lambda = c(0.001, 0.01, 0.1, 1))
+elastic_net <- train(x = X_train, y = y_train$CD36, method = "glmnet", trControl = control, tuneGrid = grid)
+
+cv_results <- elastic_net$resample
+```
+
+
+Okazuje się, że najlepszy model dostaliśmy dla parametrów:
+
+```{r}
+elastic_net$bestTune
+```
+
+```{r}
+plot(elastic_net)
+```
+
+Na podstawie powyższego wykresu wydaje się, że jest to faktycznie optymalny wybór.
+
+```{r 3.c }
+
+set.seed(1000)
+
+grid <- expand.grid(alpha = c(0.1, 0.5, 1.0), lambda = c(0.01, 0.1, 1.0))
+
+cv_results <- cv_results %>%
+  mutate(hyperparameter = paste0(0 , 0.1 , 0.2 , 0.3, 0.6, 1))
+
+
+ggplot(cv_results, aes(x = 0, y = RMSE, fill = hyperparameter)) +
+  geom_violin(trim = FALSE) +
+  geom_jitter(width = 0.2, size = 1.5, color = "black", alpha = 0.7) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Wykres skrzypcowy błędów średniokwadratowych,",
+       x = "kombinacje hiperparametrów",
+       y = "błędy średniokwadratowe (RMSE)",
+       fill = "Hyperparameters") +
+  theme(legend.position = "bottom")
+
+
+```
+
+Błąd walidacyjny wynosi:
+
+```{r echo = TRUE}
+min(elastic_net$results$RMSE)
+```
+
+Błąd treningowy wynosi:
+
+```{r echo = TRUE}
+mean((predict(elastic_net, X_train) - y_train$CD36)^2)
+```
+
+Błąd walidacyjny jest dość duży, więc nie wystąpił overfitting. Błąd treningowy jest niższy od błędu walidacyjnego, więc model dobrze generalizuje się na nowe dane.
+
+
+
+## Lasy losowe
+
+
+
+Do stworzenia modelu lasów losowych skorzystamy z metody `ranger`. Do siatki wybieramy hiperparametry `mtry`, `min.node.size` oraz `splitrule`. Pierwszy z nich określa liczbę losowo wybranych zmiennych, które będą brane pod uwagę przy podziale węzłów w drzewach, drugi minimalną liczbę obserwacji wymaganą do utworzenia węzła końcowego, a trzeci metrykę używaną do podziału węzłów drzewa. Dla `mtry` rozważamy wartości $50, 100, 200$ - środkowa została wybrana dlatego, że standardowo wybiera się mniej więcej pierwiastek z liczby parametrów. Dla `min.node.size` rozważamy wartości $1, 5, 10$. Dla `splitrule` rozważamy `variance` mierzącą wariancję wartości docelowej wokół średniej węzła oraz `extratrees` stosującą losowe podziały węzłów. Do wyboru najbardziej dopasowanego modelu korzystamy z walidacji krzyżowej o takich samych parametrach jak w poprzednim przypadku.
+
+```{r echo = TRUE}
+set.seed(1000)
+control = trainControl(method = "cv", number = 3)
+grid <- expand.grid(mtry = c(50, 100, 200), min.node.size = c(1, 5, 10), splitrule = c("variance", "extratrees"))
+
+random_forest <- train(x = X_train, y = y_train$CD36, method = "ranger", trControl = control, tuneGrid = grid)
+```
+
+Najbardziej skuteczny model dostajemy dla parametrów:
+
+```{r echo = TRUE}
+random_forest$finalModel
+```
+
+Błąd walidacyjny wynosi:
+```{r echo = TRUE}
+min(random_forest$results$RMSE)
+```
+
+Błąd treningowy wynosi:
+```{r echo = TRUE}
+mean((predict(random_forest, X_train) - y_train$CD36)^2)
+```
+
+Wykres RMSE dla poszczególnych punktów siatki wygląda następująco:
+
+```{r}
+plot(random_forest)
+```
+
+Widzimy, że parametr `variance` sprawdza się istotnie lepiej. Skuteczność rośnie wraz ze wzrostem `mtry`, ale na tyle powoli, że dalsze zwiększanie tego parametru nie wydaje się uzasadnione - wiąże się to ze zbyt dużymi kosztami obliczeniowymi i może doprowadzić do overfittingu. Parametr `min.node.size` nie ma szczególnego znaczenia ze względu na ilość danych.
+
+
+Na każdym wykresie pudełka są pokolorowane ze względu na parametr głębokości (depth) drzewa
+
+```{r echo = TRUE}
+
+resampling_results <- random_forest$results
+
+resampling_results$Hyperparameters <- with(resampling_results, 
+                                           paste("mtry=", mtry, 
+                                                 ", min.node.size=", min.node.size, 
+                                                 ", splitrule=", splitrule, sep = ""))
+
+# Create a box plot for RMSE values
+ggplot(resampling_results, aes(x = Hyperparameters, y = RMSE, fill = Hyperparameters)) +
+  geom_boxplot() +
+  labs(title = "Wykres pudelkowy RMSE dla różnych hiperparametrów",
+       x = "kombinacje hiperparametrów",
+       y = "Błąd średniokwadratowy",
+       fill = "Hyperparameters") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.position = "bottom")
+  ylim(0, max(resampling_results$RMSE) * 1.1)
+
+
+```
+
+
+
+### Zad 5
+
+
+
+Porównanie RMSE dla poszczególnych modeli przedstawia się następująco:
+
+```{r}
+table <- matrix(data = NA, nrow = 2, ncol = 3)
+
+table[1, 1] <- min(elastic_net$results$RMSE)
+table[1, 2] <- min(random_forest$results$RMSE)
+table[1, 3] <- mean((mean(y_train$CD36) - y_train$CD36)^2)
+table[2, 1] <- mean((predict(elastic_net, X_train) - y_train$CD36)^2)
+table[2, 2] <- mean((predict(random_forest, X_train) - y_train$CD36)^2)
+table[2, 3] <- mean((mean(y_train$CD36) - y_train$CD36)^2)
+
+rownames(table) <- c("błąd walidacyjny", "błąd testowy")
+colnames(table) <- c("ElasticNet", "las losowy", "średnia")
+
+table
+```
+
+Otrzymane wyniki można porównywać, ponieważ stosowaliśmy te same podziały przy walidacji krzyżowej (ustawiające ten sam seed). Oba wytrenowane modele są istotnie lepsze od modelu referencyjnego. Błędy walidacyjne są porównywalne (i na tyle duże, że nie ma powodów do podejrzewania overfittingu). Las losowy ma zdecydowanie mniejszy błąd testowy, więc najlepiej dostosowuje się do nowych danych. Możemy na tej podstawie przyjąć, że jest to najbardziej skuteczny z rozważanych modeli.
+
+
+
+
+
